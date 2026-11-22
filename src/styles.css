@@ -48,3 +48,13 @@ button.danger:hover { color: var(--danger); }
 details summary { cursor: pointer; }
 footer { margin-top: 36px; text-align: center; }
 footer a { color: inherit; }
+.warn { color: var(--me); }
+.grow { flex: 1; }
+.draft-head { display: flex; gap: 12px; align-items: center; }
+.draft-head img { width: 56px; border-radius: 6px; }
+.taglist { display: flex; gap: 6px; flex-wrap: wrap; }
+.taglist button { border-radius: 99px; padding: 2px 10px; font-size: .85rem; }
+.taglist .on { border-color: var(--me); color: var(--me); }
+.check { display: flex; gap: 8px; align-items: center; }
+input[type="checkbox"] { padding: 0; width: 18px; height: 18px; accent-color: var(--me); }
+button:disabled { opacity: .5; cursor: not-allowed; }

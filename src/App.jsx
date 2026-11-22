@@ -64,8 +64,8 @@ export default function App() {
     </main>
   );
 
-  const add = (data) => addDoc(collection(db, "items"), {
-    ...data, status: "want", wants: { [me]: true },
+  const add = ({ wantIt = true, ...data }) => addDoc(collection(db, "items"), {
+    ...data, status: "want", wants: wantIt ? { [me]: true } : {},
     addedBy: me, createdAt: serverTimestamp(),
   });
   const upd = (id, data) => updateDoc(doc(db, "items", id), data);
@@ -78,7 +78,7 @@ export default function App() {
         <button className="link" onClick={() => signOut(auth)}>Выйти</button>
       </header>
 
-      <AddForm onAdd={add} />
+      <AddForm onAdd={add} items={items} />
 
       <nav className="tabs">
         {STATUSES.map(([k, label]) => (
@@ -104,62 +104,130 @@ export default function App() {
   );
 }
 
-function AddForm({ onAdd }) {
-  const [title, setTitle] = useState("");
-  const [type, setType] = useState("movie");
-  const [tags, setTags] = useState("");
-  const [note, setNote] = useState("");
+const norm = (s = "") => s.toLowerCase().replace(/ё/g, "е").replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+const statusLabel = (it) => STATUSES.find(([k]) => k === (it.status || "want"))?.[1] || "";
+
+// exact: тот же фильм из TMDB; иначе совпадение по названию (мягкое, ремейки бывают)
+function findDup(items, r) {
+  if (r.tmdbId) {
+    const e = items.find((it) => it.tmdbId === r.tmdbId && it.type === r.type);
+    if (e) return { item: e, exact: true };
+  }
+  const names = [r.title, r.originalTitle].filter(Boolean).map(norm);
+  const s = items.find((it) => (!r.tmdbId || !it.tmdbId) &&
+    [it.title, it.originalTitle].filter(Boolean).map(norm).some((n) => names.includes(n)));
+  return s ? { item: s, exact: false } : null;
+}
+
+function AddForm({ onAdd, items }) {
+  const [q, setQ] = useState("");
   const [results, setResults] = useState([]);
   const [failed, setFailed] = useState(false);
+  const [draft, setDraft] = useState(null);
+  const [tags, setTags] = useState("");
+  const [note, setNote] = useState("");
+  const [wantIt, setWantIt] = useState(true);
 
   useEffect(() => {
-    const q = title.trim();
-    if (q.length < 2) { setResults([]); return; }
+    const text = q.trim();
+    if (draft || text.length < 2) { setResults([]); return; }
     const ctrl = new AbortController();
     const t = setTimeout(() => {
-      searchTmdb(q, ctrl.signal)
+      searchTmdb(text, ctrl.signal)
         .then((r) => { setResults(r); setFailed(false); })
         .catch((e) => { if (e.name !== "AbortError") setFailed(true); });
     }, 350);
     return () => { clearTimeout(t); ctrl.abort(); };
-  }, [title]);
+  }, [q, draft]);
 
-  const extra = () => ({ note: note.trim(), tags: tags.split(",").map((t) => t.trim()).filter(Boolean) });
-  const reset = () => { setTitle(""); setTags(""); setNote(""); setResults([]); };
-  const pick = (r) => { onAdd({ ...r, ...extra() }); reset(); };
-  const manual = () => { if (title.trim()) { onAdd({ title: title.trim(), type, ...extra() }); reset(); } };
+  const allTags = useMemo(() => [...new Set(items.flatMap((i) => i.tags || []))].sort(), [items]);
+  const curTags = tags.split(",").map((t) => t.trim()).filter(Boolean);
+  const toggleTag = (t) => setTags((curTags.includes(t) ? curTags.filter((x) => x !== t) : [...curTags, t]).join(", "));
+  const reset = () => { setQ(""); setDraft(null); setTags(""); setNote(""); setWantIt(true); setResults([]); };
 
-  return (
+  if (!draft) return (
     <section className="add">
-      <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Найти фильм или сериал по названию" />
-      <input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="Категории через запятую" />
-      <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Заметка" />
+      <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Найти фильм или сериал по названию" />
       {failed && <p className="muted small">Поиск недоступен. Проверь ключ TMDB, а пока можно добавить вручную.</p>}
       {results.length > 0 && (
         <ul className="results">
-          {results.map((r) => (
-            <li key={`${r.type}${r.tmdbId}`}>
-              <button type="button" onClick={() => pick(r)}>
-                {r.poster ? <img src={posterUrl(r.poster, "w92")} alt="" /> : <span className="noimg" />}
-                <span>
-                  <b>{r.title}</b>
-                  <span className="muted small"> {r.type === "series" ? "сериал" : "фильм"}{r.year && `, ${r.year}`}</span>
-                  {r.originalTitle && r.originalTitle !== r.title && <span className="muted small block">{r.originalTitle}</span>}
-                </span>
-              </button>
-            </li>
-          ))}
+          {results.map((r) => {
+            const d = findDup(items, r);
+            return (
+              <li key={`${r.type}${r.tmdbId}`}>
+                <button type="button" disabled={d?.exact} onClick={() => setDraft(r)}>
+                  {r.poster ? <img src={posterUrl(r.poster, "w92")} alt="" /> : <span className="noimg" />}
+                  <span>
+                    <b>{r.title}</b>
+                    <span className="muted small"> {r.type === "series" ? "сериал" : "фильм"}{r.year && `, ${r.year}`}</span>
+                    {r.originalTitle && r.originalTitle !== r.title && <span className="muted small block">{r.originalTitle}</span>}
+                    {d?.exact && <span className="warn small block">Уже в списке: {statusLabel(d.item)}</span>}
+                    {d && !d.exact && <span className="warn small block">Возможно, уже есть: «{d.item.title}»</span>}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
         </ul>
       )}
-      {title.trim().length > 1 && (
-        <div className="row wrap">
-          <select value={type} onChange={(e) => setType(e.target.value)}>
-            <option value="movie">Фильм</option><option value="series">Сериал</option>
-          </select>
-          <button type="button" onClick={manual}>Добавить вручную «{title.trim()}»</button>
-        </div>
+      {q.trim().length > 1 && (
+        <button type="button" onClick={() => setDraft({ title: q.trim(), type: "movie" })}>Добавить вручную «{q.trim()}»</button>
       )}
     </section>
+  );
+
+  const dup = findDup(items, draft);
+  const submit = (e) => {
+    e.preventDefault();
+    if (!draft.title.trim() || dup?.exact) return;
+    onAdd({ ...draft, title: draft.title.trim(), note: note.trim(), tags: curTags, wantIt });
+    reset();
+  };
+
+  return (
+    <form className="add" onSubmit={submit}>
+      <div className="draft-head">
+        {draft.poster && <img src={posterUrl(draft.poster, "w92")} alt="" />}
+        <div className="grow">
+          {draft.tmdbId ? (
+            <>
+              <b>{draft.title}</b>
+              <span className="muted small"> {draft.type === "series" ? "сериал" : "фильм"}{draft.year && `, ${draft.year}`}</span>
+              {draft.originalTitle && draft.originalTitle !== draft.title && <span className="muted small block">{draft.originalTitle}</span>}
+            </>
+          ) : (
+            <div className="row wrap">
+              <input className="grow" value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} />
+              <select value={draft.type} onChange={(e) => setDraft({ ...draft, type: e.target.value })}>
+                <option value="movie">Фильм</option><option value="series">Сериал</option>
+              </select>
+            </div>
+          )}
+        </div>
+      </div>
+      {dup && (
+        <p className="warn small">
+          {dup.exact ? "Этот фильм уже в списке" : "Похожая запись уже есть"}: «{dup.item.title}» ({statusLabel(dup.item)}).
+          {!dup.exact && " Если это другой фильм (например, ремейк), можно добавить."}
+        </p>
+      )}
+      <input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="Категории через запятую" />
+      {allTags.length > 0 && (
+        <div className="taglist">
+          {allTags.map((t) => (
+            <button type="button" key={t} className={curTags.includes(t) ? "on" : ""} onClick={() => toggleTag(t)}>{t}</button>
+          ))}
+        </div>
+      )}
+      <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Заметка" />
+      <label className="check">
+        <input type="checkbox" checked={wantIt} onChange={(e) => setWantIt(e.target.checked)} /> Я хочу это посмотреть
+      </label>
+      <div className="row wrap">
+        <button className="primary" disabled={dup?.exact}>Добавить</button>
+        <button type="button" onClick={reset}>Отмена</button>
+      </div>
+    </form>
   );
 }
 
