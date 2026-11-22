@@ -17,8 +17,12 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 button.primary { background: var(--me); color: #1b2735; border-color: var(--me); font-weight: 600; }
 button.link { background: none; border: none; color: var(--muted); padding: 4px; text-decoration: underline; }
 button.danger:hover { color: var(--danger); }
-.add { display: grid; grid-template-columns: 1fr 120px; gap: 8px; margin-bottom: 20px; }
-.add input:nth-child(3), .add input:nth-child(4), .add button { grid-column: 1 / -1; }
+.add { display: grid; gap: 8px; margin-bottom: 20px; }
+.results { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.results li + li { border-top: 1px solid var(--line); }
+.results button { display: flex; gap: 10px; width: 100%; text-align: left; border: none; border-radius: 0; align-items: center; }
+.results img, .results .noimg { width: 40px; height: 60px; object-fit: cover; border-radius: 4px; background: var(--line); flex: none; }
+.block { display: block; }
 .tabs, .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
 .tabs button { border-radius: 8px 8px 0 0; }
 .tabs .on { background: var(--text); color: var(--bg); border-color: var(--text); }
@@ -39,3 +43,8 @@ button.danger:hover { color: var(--danger); }
 .score > .muted { min-width: 92px; } .score select { padding: 4px 8px; }
 .empty { text-align: center; padding: 30px 0; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+.card.has-poster { display: grid; grid-template-columns: 84px 1fr; gap: 12px; }
+.poster { width: 84px; border-radius: 6px; display: block; }
+details summary { cursor: pointer; }
+footer { margin-top: 36px; text-align: center; }
+footer a { color: inherit; }

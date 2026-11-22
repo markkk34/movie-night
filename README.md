@@ -65,3 +65,10 @@ npm run dev
 - `auth/unauthorized-domain`: домен не добавлен в Authorized domains (шаг 3).
 - "Нет доступа" под правильным аккаунтом: опечатка в email в правилах или правила не опубликованы.
 - Белый экран на GitHub Pages: проверь, что в Settings → Pages выбран источник GitHub Actions.
+
+## 4. Поиск фильмов через TMDB
+
+1. Ключ: themoviedb.org → Settings → API → **API Key (v3 auth)**.
+2. Вставь его в `src/tmdb.js` вместо `ВСТАВЬ_СЮДА_TMDB_API_KEY`.
+3. Запушь. Ключ виден в браузере, это нормально: он бесплатный и только для чтения. По домену его ограничить нельзя.
+4. По условиям TMDB нужна атрибуция. Текстовая уже есть внизу страницы, логотип можно взять на themoviedb.org/about/logos-attribution.

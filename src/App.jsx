@@ -5,6 +5,7 @@ import {
   orderBy, query, serverTimestamp, setDoc, updateDoc,
 } from "firebase/firestore";
 import { auth, db, provider } from "./firebase";
+import { posterUrl, searchTmdb } from "./tmdb";
 
 const STATUSES = [["want", "Хотим посмотреть"], ["watching", "Смотрим"], ["done", "Посмотрели"]];
 
@@ -95,6 +96,10 @@ export default function App() {
         <Item key={it.id} it={it} me={me} partner={partner} users={users}
           onUpdate={(d) => upd(it.id, d)} onDelete={() => deleteDoc(doc(db, "items", it.id))} />
       ))}
+      <footer className="muted small">
+        Данные о фильмах: <a href="https://www.themoviedb.org/" target="_blank" rel="noreferrer">TMDB</a>.
+        This product uses the TMDB API but is not endorsed or certified by TMDB.
+      </footer>
     </main>
   );
 }
@@ -104,22 +109,57 @@ function AddForm({ onAdd }) {
   const [type, setType] = useState("movie");
   const [tags, setTags] = useState("");
   const [note, setNote] = useState("");
-  const submit = (e) => {
-    e.preventDefault();
-    if (!title.trim()) return;
-    onAdd({ title: title.trim(), type, note: note.trim(), tags: tags.split(",").map((t) => t.trim()).filter(Boolean) });
-    setTitle(""); setTags(""); setNote("");
-  };
+  const [results, setResults] = useState([]);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    const q = title.trim();
+    if (q.length < 2) { setResults([]); return; }
+    const ctrl = new AbortController();
+    const t = setTimeout(() => {
+      searchTmdb(q, ctrl.signal)
+        .then((r) => { setResults(r); setFailed(false); })
+        .catch((e) => { if (e.name !== "AbortError") setFailed(true); });
+    }, 350);
+    return () => { clearTimeout(t); ctrl.abort(); };
+  }, [title]);
+
+  const extra = () => ({ note: note.trim(), tags: tags.split(",").map((t) => t.trim()).filter(Boolean) });
+  const reset = () => { setTitle(""); setTags(""); setNote(""); setResults([]); };
+  const pick = (r) => { onAdd({ ...r, ...extra() }); reset(); };
+  const manual = () => { if (title.trim()) { onAdd({ title: title.trim(), type, ...extra() }); reset(); } };
+
   return (
-    <form className="add" onSubmit={submit}>
-      <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Название" />
-      <select value={type} onChange={(e) => setType(e.target.value)}>
-        <option value="movie">Фильм</option><option value="series">Сериал</option>
-      </select>
+    <section className="add">
+      <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Найти фильм или сериал по названию" />
       <input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="Категории через запятую" />
       <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Заметка" />
-      <button className="primary">Добавить</button>
-    </form>
+      {failed && <p className="muted small">Поиск недоступен. Проверь ключ TMDB, а пока можно добавить вручную.</p>}
+      {results.length > 0 && (
+        <ul className="results">
+          {results.map((r) => (
+            <li key={`${r.type}${r.tmdbId}`}>
+              <button type="button" onClick={() => pick(r)}>
+                {r.poster ? <img src={posterUrl(r.poster, "w92")} alt="" /> : <span className="noimg" />}
+                <span>
+                  <b>{r.title}</b>
+                  <span className="muted small"> {r.type === "series" ? "сериал" : "фильм"}{r.year && `, ${r.year}`}</span>
+                  {r.originalTitle && r.originalTitle !== r.title && <span className="muted small block">{r.originalTitle}</span>}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {title.trim().length > 1 && (
+        <div className="row wrap">
+          <select value={type} onChange={(e) => setType(e.target.value)}>
+            <option value="movie">Фильм</option><option value="series">Сериал</option>
+          </select>
+          <button type="button" onClick={manual}>Добавить вручную «{title.trim()}»</button>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -146,12 +186,16 @@ function Item({ it, me, partner, users, onUpdate, onDelete }) {
   const toggleWant = () => onUpdate({ [`wants.${me}`]: wantMine ? deleteField() : true });
   const sc = { it, me, partner, users, onUpdate };
   return (
-    <article className="card">
+    <article className={`card ${it.poster ? "has-poster" : ""}`}>
+      {it.poster && <img className="poster" src={posterUrl(it.poster)} alt="" loading="lazy" />}
+      <div className="main">
       <div className="row">
         <h2>{it.title}</h2>
-        <span className="kind">{it.type === "series" ? "сериал" : "фильм"}</span>
+        <span className="kind">{it.type === "series" ? "сериал" : "фильм"}{it.year ? `, ${it.year}` : ""}</span>
       </div>
       {it.tags?.length > 0 && <div className="tags">{it.tags.map((t) => <span key={t}>{t}</span>)}</div>}
+      {it.originalTitle && it.originalTitle !== it.title && <p className="muted small">{it.originalTitle}</p>}
+      {it.overview && <details className="muted small"><summary>Описание</summary>{it.overview}</details>}
       {it.note && <p className="note">{it.note}</p>}
       <p className="muted small">
         Добавил(а): <span className={`who ${it.addedBy === me ? "me" : "partner"}`} /> {users[it.addedBy] || "—"}
@@ -170,6 +214,7 @@ function Item({ it, me, partner, users, onUpdate, onDelete }) {
       <Score label="Ожидание" field="expect" {...sc} />
       {status === "done" && <Score label="Впечатление" field="rating" {...sc} />}
       <button className="link danger" onClick={() => confirm(`Удалить «${it.title}»?`) && onDelete()}>Удалить</button>
+    </div>
     </article>
   );
 }
